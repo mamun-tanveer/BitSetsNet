@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -6,16 +7,29 @@ using System.Threading.Tasks;
 
 namespace BitsetsNET
 {
-    public abstract class Container
+    public abstract class Container : IEnumerable<ushort>
     {
+        
+        /// <summary>
+        /// Add a short to the container. May generate a new container.
+        /// </summary>
+        /// <param name="x">short to be added</param>
+        /// <returns>this container modified</returns>
+        public abstract Container add(ushort x);
 
         /**
-         * Add a short to the container. May generate a new container.
-         *
-         * @param x short to be added
-         * @return the new container
-         */
-        public abstract Container add(ushort x);
+        * Add to the current bitmap all integers in [rangeStart,rangeEnd).
+        *
+        * @param rangeStart inclusive beginning of range
+        * @param rangeEnd   exclusive ending of range
+        */
+
+        /// <summary>
+        /// Add to the current bitmap all integers in [rangeStart,rangeEnd).
+        /// </summary>
+        /// <param name="rangeStart">inclusive beginning of range</param>
+        /// <param name="rangeEnd">exclusive ending of range</param>
+        public abstract Container add(ushort rangeStart, ushort rangeEnd);
 
         /**
          * Computes the bitwise AND of this container with another
@@ -52,7 +66,52 @@ namespace BitsetsNET
             return and((BitsetContainer) x);
         }
 
-        
+        /// <summary>
+        /// Computes the bitwise ANDNOT of this container with another
+        /// (difference). This container as well as the provided container are
+        /// left unaffected. 
+        /// </summary>
+        /// <param name="x">Other container</param>
+        /// <returns>A new container with the result</returns>
+        public abstract Container andNot(ArrayContainer x);
+
+        /// <summary>
+        /// Computes the bitwise ANDNOT of this container with another
+        /// (difference). This container as well as the provided container are
+        /// left unaffected. 
+        /// </summary>
+        /// <param name="x">Other container</param>
+        /// <returns>A new container with the result</returns>
+        public abstract Container andNot(BitsetContainer x);
+
+        public Container andNot(Container x)
+        {
+            if (x is ArrayContainer)
+                return andNot((ArrayContainer) x);
+            return andNot((BitsetContainer) x);
+        }
+
+        /// <summary>
+        /// Computes the bitwise ANDNOT of this container with another
+        /// (difference). Modifies the current container in place.
+        /// </summary>
+        /// <param name="x">Other container</param>
+        public abstract Container iandNot(ArrayContainer x);
+
+        /// <summary>
+        /// Computes the bitwise ANDNOT of this container with another
+        /// (difference). Modifies the current container in place.
+        /// </summary>
+        /// <param name="x">Other container</param>
+        public abstract Container iandNot(BitsetContainer x);
+
+        public Container iandNot(Container x)
+        {
+            if (x is ArrayContainer)
+                return iandNot((ArrayContainer)x);
+            return iandNot((BitsetContainer)x);
+        }
+
         public abstract Container clone();
 
         /**
@@ -128,12 +187,37 @@ namespace BitsetsNET
          * @param x other container
          * @return whether they intersect
          */
+
+        
+        public abstract Container inot(int start, int end);
+
         public bool intersects(Container x)
         {
             if (x is ArrayContainer)
                 return intersects((ArrayContainer)x);
             return intersects((BitsetContainer)x);
         }
+
+        /// <summary>
+        /// Create a container initialized with a range of consecutive values
+        /// </summary>
+        /// <param name="start">first index</param>
+        /// <param name="last">last index</param>
+        /// <returns>return a new container initialized with the specified values</returns>
+        /// <remarks>In the original lemire version, there is some optimization here
+        /// to choose between an ArrayContainer and a RunContainer based on serialized size.
+        /// For now, this has been stripped out and always uses an ArrayContainer.</remarks>
+        public static Container rangeOfOnes(ushort start, ushort last)
+        {
+            //TODO: Add in logic for RunContainers
+            Container answer = new ArrayContainer();
+            answer = answer.iadd(start, last);
+            return answer;
+        }
+
+        public abstract Container flip(ushort x);
+
+        public abstract Container iadd(ushort begin, ushort end);
 
         /**
          * Returns true if the current container intersects the other container.
@@ -219,14 +303,21 @@ namespace BitsetsNET
                 return or((ArrayContainer)x);
             return or((BitsetContainer)x);
         }
-
-        /**
-         * Remove the short from this container. May create a new container.
-         *
-         * @param x to be removed
-         * @return New container
-         */
+        
+        /// <summary>
+        /// Remove the short from this container. May create a new container.
+        /// </summary>
+        /// <param name="x">to be removed</param>
+        /// <returns>the new container</returns>
         public abstract Container remove(ushort x);
+
+        /// <summary>
+        /// Remove shorts in [begin,end) using an unsigned interpretation. May generate a new container.
+        /// </summary>
+        /// <param name="begin">start of range (inclusive)</param>
+        /// <param name="end">end of range (exclusive)</param>
+        /// <returns>the new container</returns>
+        public abstract Container remove(ushort begin, ushort end);
 
         /**
          * Return the jth value 
@@ -238,6 +329,36 @@ namespace BitsetsNET
         public abstract ushort select(int j);
 
 
+        /// <summary>
+        /// Serialize this container in a binary format.
+        /// </summary>
+        /// <param name="writer">The binary writer to write the serialization to.</param>
+        public abstract void Serialize(System.IO.BinaryWriter writer);
 
+        /// <summary>
+        /// Deserialize a container from a binary reader.
+        /// </summary>
+        /// <param name="reader"></param>
+        /// <returns>The next container represented by the reader.</returns>
+        /// <remarks>The binary format for deserialization is the format written by the Serialize method.</remarks>
+        public static Container Deserialize(System.IO.BinaryReader reader)
+        {
+            int cardinality = reader.ReadInt32();
+            if(cardinality < ArrayContainer.DEFAULT_MAX_SIZE)
+            {
+                return ArrayContainer.Deserialize(reader, cardinality);
+            }
+            else
+            {
+                return BitsetContainer.Deserialize(reader, cardinality);
+            }
+        }
+
+        public abstract IEnumerator<ushort> GetEnumerator();
+
+        IEnumerator IEnumerable.GetEnumerator()
+        {
+            return GetEnumerator();
+        }
     }
 }

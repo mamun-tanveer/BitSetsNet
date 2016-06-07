@@ -140,7 +140,61 @@ namespace BitsetsNET
 
         public int Cardinality()
         {
-            throw new NotImplementedException();
+            int rtnValue = 0;
+
+            for (int i = 0; i < _Array.Length; i++)
+            {
+                if (_Array[i]) rtnValue += 1;
+            }
+
+            return rtnValue;
+        }
+
+        public void Set(int start, int end, bool value)
+        {
+            for (int i = start; i <= end; i++ )
+            {
+                _Array.Set(i, value);
+            }
+        }
+
+        public void Flip(int index)
+        {
+            _Array[index] = !_Array[index];
+        }
+
+        public void Flip(int start, int end)
+        {
+            for (int i = start; i < end; i++)
+            {
+                Flip(i);
+            }
+        }
+
+        public IBitset Difference(IBitset otherSet)
+        {
+            UncompressedBitArray workset = null;
+            if (otherSet is UncompressedBitArray)
+                workset = (UncompressedBitArray)otherSet;
+            else
+                throw new InvalidOperationException("otherSet is not an UncompressedBitArray");
+
+            UncompressedBitArray newArray = (UncompressedBitArray) this.Clone();
+
+            for (int i = 0; i < workset._Array.Length; i++)
+            {
+                if (workset._Array[i] && i < this.Length())
+                {
+                    newArray.Set(i, false);
+                }
+            }
+
+            return newArray;
+        }
+
+        public BitArray ToBitArray()
+        {
+            return new BitArray(this._Array);
         }
     }
 }

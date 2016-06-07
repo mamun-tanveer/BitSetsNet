@@ -8,20 +8,84 @@ namespace BitsetsNET
 {
     class Utility
     {
+        /// <summary>
+        /// Gets the 16 highest-order bits from an integer.
+        /// </summary>
+        /// <param name="x">The integer to shift</param>
+        /// <returns>The highest-order bits</returns>
         public static ushort GetHighBits(int x)
         {
             uint u = (uint)(x);
             return (ushort) (u >> 16);
         }
 
+        /// <summary>
+        /// Gets the 16 lowest-order bits from an integer.
+        /// </summary>
+        /// <param name="x">The integer to shift</param>
+        /// <returns>The lowest-order bits</returns>
         public static ushort GetLowBits(int x)
         {
             return (ushort)(x & 0xFFFF);
         }
 
-        public static uint toIntUnsigned(ushort x)
+        public static int GetMaxLowBitAsInteger()
         {
-            return (uint) x;
+            return (int) 0xFFFF;
+        }
+
+        public static int toIntUnsigned(ushort x)
+        {
+            return (int) x;
+        }
+
+        public static void flipBitsetRange(long[] bitset, int start, int end)
+        {
+            if (start == end)
+            {
+                return;
+            }
+            uint firstword = (uint) (start / 64);
+            uint endword = (uint) (end - 1) / 64;
+            bitset[firstword] ^= ~(long)(ulong.MaxValue << start);
+            for (uint i = firstword; i < endword; i++)
+            {
+                bitset[i] = ~bitset[i];
+            }
+
+            bitset[endword] ^= (long)(ulong.MaxValue >> -end);
+        }
+
+        public static int flipBitsetRangeAndCardinalityChange(long[] bitmap, int start, int end)
+        {
+            int cardbefore = cardinalityInBitmapWordRange(bitmap, start, end);
+            flipBitsetRange(bitmap, start, end);
+            int cardafter = cardinalityInBitmapWordRange(bitmap, start, end);
+            return cardafter - cardbefore;
+        }
+
+        /**
+   * Hamming weight of the 64-bit words involved in the range
+   *  start, start+1,..., end-1
+   * 
+   * @param bitmap array of words to be modified
+   * @param start first index to be modified (inclusive)
+   * @param end last index to be modified (exclusive)
+   */
+        public static int cardinalityInBitmapWordRange(long[] bitmap, int start, int end)
+        {
+            if (start == end)
+            {
+                return 0;
+            }
+            int firstword = start / 64;
+            int endword = (end - 1) / 64;
+            int answer = 0;
+            for (int i = firstword; i <= endword; i++)
+            {
+                answer += longBitCount(bitmap[i]);
+            }
+            return answer;
         }
 
         public static int unsignedBinarySearch(ushort[] array, int begin, int end, ushort key) {
@@ -101,6 +165,31 @@ namespace BitsetsNET
             }
         }
         
+        /// <summary>
+        /// Computes the bitwise ANDNOT between two long arrays and writes
+        /// the set bits in the container.
+        /// </summary>
+        /// <param name="container"> Writing here</param>
+        /// <param name="bitmap1"></param>
+        /// <param name="bitmap2"></param>
+        public static void fillArrayANDNOT(ushort[] container,
+                                           long[] bitmap1,
+                                           long[] bitmap2)
+        {
+            int pos = 0;
+            if (bitmap1.Length != bitmap2.Length)
+                throw new ArgumentOutOfRangeException("Bitmaps need to be the same length");
+            for (int k = 0; k < bitmap1.Length; ++k)
+            {
+                long bitset = bitmap1[k] & (~bitmap2[k]);
+                while (bitset != 0)
+                {
+                    long t = bitset & -bitset;
+                    container[pos++] = (ushort)(k * 64 + Utility.longBitCount(t - 1));
+                    bitset ^= t;
+                }
+            }
+        }
         
         /**
  * Unite two sorted lists and write the result to the provided
@@ -305,6 +394,118 @@ namespace BitsetsNET
         }
 
         /// <summary>
+        /// Compares the two specified unsigned short values, treating them as
+        /// unsigned values between 0 and 2^16 - 1 inclusive.
+        /// </summary>
+        /// <param name="a">the first unsigned short to compare</param>
+        /// <param name="b">the second unsigned short to compare</param>
+        /// <returns>A negative value if a is less than b, a positive value if a is 
+        /// greater than b, or zero if they are equal</returns>
+        public static uint compareUnsigned(ushort a, ushort b)
+        {
+            return (uint) (toIntUnsigned(a) - toIntUnsigned(b));
+        }
+
+        /// <summary>
+        /// Compute the difference between two sorted lists and write the result to the provided
+        /// output array
+        /// </summary>
+        /// <returns>Cardinality of the difference</returns>
+        public static int unsignedDifference(ushort[] set1, 
+                                             int length1,
+                                             ushort[] set2,
+                                             int length2,
+                                             ushort[] buffer)
+        {
+            int pos = 0;
+            int k1 = 0, k2 = 0;
+
+            // If nothing to diff with, use original cardinality
+            if (length2 == 0)
+            {
+                Array.Copy(set1, 0, buffer, 0, length1);
+                return length1;
+            }
+
+            // Cardinality must be zero
+            if (length1 == 0)
+            {
+                return 0;
+            }
+
+            ushort s1 = set1[k1];
+            ushort s2 = set2[k2];
+            while (true)
+            {
+                if (toIntUnsigned(s1) < toIntUnsigned(s2))
+                {
+                    buffer[pos++] = s1;
+                    ++k1;
+                    if (k1 >= length1)
+                    {
+                        break;
+                    }
+                    s1 = set1[k1];
+                }
+                else if (toIntUnsigned(s1) == toIntUnsigned(s2))
+                {
+                    ++k1;
+                    ++k2;
+                    if (k1 >= length1)
+                    {
+                        break;
+                    }
+                    if (k2 >= length2)
+                    {
+                        Array.Copy(set1, k1, buffer, pos, length1 - k1);
+                        return pos + length1 - k1;
+                    }
+                    s1 = set1[k1];
+                    s2 = set2[k2];
+                }
+                else
+                {
+                    ++k2;
+                    if (k2 >= length2)
+                    {
+                        Array.Copy(set1, k1, buffer, pos, length1 - k1);
+                        return pos + length1 - k1;
+                    }
+                    s2 = set2[k2];
+                }
+            }
+            return pos;
+        }
+
+        /// <summary>
+        /// This is an Array extension method analogous to Java's Array.fill().
+        /// Fills a certain range of array indices with a specific value.
+        /// </summary>
+        /// <param name="array">array to modify</param>
+        /// <param name="start">the starting index</param>
+        /// <param name="end">the ending index</param>
+        /// <param name="value">value to set</param>
+        public static void Fill<T>(T[] array, int start, int end, T value)
+        {
+            if (array == null)
+            {
+                throw new ArgumentNullException("array");
+            }
+            if (start < 0 || start > end)
+            {
+                throw new ArgumentOutOfRangeException("fromIndex");
+            }
+            if (end > array.Length)
+            {
+                throw new ArgumentOutOfRangeException("toIndex");
+            }
+            for (int i = start; i < end; i++)
+            {
+                array[i] = value;
+            }
+        }
+
+        /// <summary>
         /// Find the smallest integer larger than pos such that array[pos] >= min.
         /// If none can be found, return length. Based on code by O. Kaser.
         /// </summary>
@@ -416,6 +617,60 @@ namespace BitsetsNET
                 }
             }
             return seen + counter;
+        }
+        
+        /// <summary>
+        /// clear bits at start, start+1,..., end-1
+        /// </summary>
+        /// <param name="bitmap">bitmap array of words to be modified</param>
+        /// <param name="start">start first index to be modified (inclusive)</param>
+        /// <param name="end">end last index to be modified (exclusive)</param>
+        public static void resetBitmapRange(long[] bitmap, int start, int end)
+        {
+            if (start == end) return;
+
+            int firstword = start / 64;
+            int endword = (end - 1) / 64;
+
+            if (firstword == endword)
+            {
+                bitmap[firstword] &= ~((~0L << start) & (long)(~0UL >> -end));
+                return;
+            }
+
+            bitmap[firstword] &= ~(~0L << start);
+
+            for (int i = firstword + 1; i < endword; i++)
+                bitmap[i] = 0;
+
+            bitmap[endword] &= (long)~(~0UL >> -end);
+        }
+
+        /// <summary>
+        /// set bits at start, start+1,..., end-1
+        /// </summary>
+        /// <param name="bitmap">array of words to be modified</param>
+        /// <param name="start">first index to be modified (inclusive)</param>
+        /// <param name="end">last index to be modified (exclusive)</param>
+        public static void setBitmapRange(long[] bitmap, ushort start, ushort end)
+        {
+            if (start == end) return;
+
+            int firstword = start / 64;
+            int endword = (end - 1) / 64;
+
+            if (firstword == endword)
+            {
+                bitmap[firstword] |= (~0L << start) & (long)(~0UL >> -end);
+                return;
+            }
+
+            bitmap[firstword] |= ~0L << start;
+
+            for (int i = firstword + 1; i < endword; i++)
+                bitmap[i] = ~0L;
+
+            bitmap[endword] |= (long)(~0UL >> -end);
         }
     }
 }
